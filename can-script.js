@@ -2,14 +2,20 @@
 windowLoaded().then(fetchProducts, errorHandler)
               .then(initialize, errorHandler);
 
-function errorHandler(errorMsg) {
-  console.error(errorMsg);
+function errorHandler(error) {
+  if (error.breakChain) {
+    console.log('errorHandler: skip handling');
+    return Promise.reject(error);
+  }
+  console.error(error);
 }
 
 function windowLoaded() {
   return new Promise(function (resolve, reject) {
     window.onload = resolve;
-    window.onerror = reject;
+    window.onerror = function () {
+      reject('Error loading window');
+    };
   });
 }
 
@@ -29,55 +35,27 @@ function fetchProducts() {
 }
 
 function initialize(products) { 
-  var category = document.querySelector('#category');
-
-  var lastCategory = category.value;
-  var lastSearch = '';
-
-  // categoryGroup is the group to search by
-  var categoryGroup = [];
-  // finalGroup contains products after searching is done
-  var finalGroup = [];
-
-  finalGroup = products;
-  updateDisplay(finalGroup);
-
-  searchBtnClick(category, lastCategory, lastSearch)
-      .then(selectCategory)
-      .then(function(categoryValue) { 
-        lastCategory = category.value;
-        lastSearch = searchTerm.value.trim();
-        return new Promise(function(resolve, reject) {
-          if (categoryValue === 'All') {
-            categoryGroup = products;
-            resolve({finalGroup, categoryGroup});
-          } else { 
-            var lowerCaseType = category.value.toLowerCase();
-            for (let product of products) {
-              if (product.type === lowerCaseType) {
-                categoryGroup.push(product);
-              }
-            }
-          } 
-          resolve({finalGroup, categoryGroup});
-        });
-      }, doNothing)
-      .then(selectProducts)
-      .then(updateDisplay);
-
-  function doNothing() {
-    console.log('Doing nothing...');
-    return null;
-  }
+  updateDisplay(products);
+  var lastFilter = createInitialFilter();
+  attachSearchBtnClickListener(products, lastFilter)
 }
 
-function selectProducts({finalGroup, categoryGroup}) {
+function createInitialFilter() {
+  var category = document.querySelector('#category').value;
+  var searchTerm = document.querySelector('#searchTerm').value;
+  return {category, searchTerm};
+}
+
+function selectProducts({categoryGroup}) {
   console.log('selecting products');
+  // group after category filter and search term filter applied
+  var finalGroup;
   return new Promise(function(resolve, reject) {
     var searchTerm = document.querySelector('#searchTerm');
     if (searchTerm.value.trim() === '') {
       finalGroup = categoryGroup;
     } else {
+      finalGroup = [];
       var lowerCaseSearchTerm = searchTerm.value.trim().toLowerCase();
       for (let product of categoryGroup) {
         var isLowerCaseProductName = product.name.indexOf(lowerCaseSearchTerm) != -1;
@@ -85,32 +63,53 @@ function selectProducts({finalGroup, categoryGroup}) {
           finalGroup.push(product);
         }
       }
-    }
+    } 
     resolve(finalGroup);
   });
 }
 
-function searchBtnClick(category, lastCategory, lastSearch) {
+function attachSearchBtnClickListener(products, lastFilter) {
   var searchBtn = document.querySelector('button');
   return new Promise(function(resolve, reject) {
     searchBtn.onclick = function(e) {
       e.preventDefault();
-      console.log('searchBtn clicked!');
-      resolve(category, lastCategory, lastSearch);
+      console.log('searchBtn clicked!'); 
+      //resolve({category, products});
+      selectCategory({products, lastFilter})
+        .then(selectProducts, errorHandler)
+        .then(updateDisplay, errorHandler)
+        .catch(function() {});
     }
   });
 }
 
-function selectCategory(category, lastCategory, lastSearch) { 
-  return new Promise(function(resolve, reject) {
-    console.log('selecting category');
-    var sameCategoryAsLastSearch = category.value === lastCategory;
-    var searchTermSameAsLastSearch = searchTerm.value.trim() === lastSearch;
-    if (sameCategoryAsLastSearch && searchTermSameAsLastSearch) {
-      reject();   
+function selectCategory({products, lastFilter}) { 
+  return new Promise(function(resolve, reject) { 
+    var lastCategory = lastFilter.category;
+    var lastSearchTerm = lastFilter.searchTerm;
+    var category = document.querySelector('#category').value;
+    var searchTerm = document.querySelector('#searchTerm').value;
+    var hasSameCategory = lastCategory === category;
+    var hasSameSearchTerm = lastSearchTerm === searchTerm; 
+    if (hasSameCategory && hasSameSearchTerm) {
+      reject({breakChain: true});   
     } else {
       // update record of last category and search term
-      resolve(category.value);
+      lastFilter.category = category;
+      lastFilter.searchTerm = searchTerm;
+      var categoryGroup = []; 
+      if (category === 'All') {
+        categoryGroup = products;
+      } else { 
+        var lowerCaseType = category.toLowerCase(); 
+        for (let product of products) {
+          // filtering by category
+          if (product.type === lowerCaseType) {
+            categoryGroup.push(product);
+          }
+        }
+      }
+      resolve({categoryGroup}); 
     }
   });
 }

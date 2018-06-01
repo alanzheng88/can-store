@@ -30,20 +30,89 @@ function fetchProducts() {
 
 function initialize(products) { 
   var category = document.querySelector('#category');
-  var searchTerm = document.querySelector('#searchTerm');
-  var searchBtn = document.querySelector('button');
-  var main = document.querySelector('main');
 
   var lastCategory = category.value;
   var lastSearch = '';
 
   // categoryGroup is the group to search by
-  var categoryGroup;
+  var categoryGroup = [];
   // finalGroup contains products after searching is done
-  var finalGroup;
+  var finalGroup = [];
 
   finalGroup = products;
-  updateDisplay(finalGroup, main);
+  updateDisplay(finalGroup);
+
+  searchBtnClick(category, lastCategory, lastSearch)
+      .then(selectCategory)
+      .then(function(categoryValue) { 
+        lastCategory = category.value;
+        lastSearch = searchTerm.value.trim();
+        return new Promise(function(resolve, reject) {
+          if (categoryValue === 'All') {
+            categoryGroup = products;
+            resolve({finalGroup, categoryGroup});
+          } else { 
+            var lowerCaseType = category.value.toLowerCase();
+            for (let product of products) {
+              if (product.type === lowerCaseType) {
+                categoryGroup.push(product);
+              }
+            }
+          } 
+          resolve({finalGroup, categoryGroup});
+        });
+      }, doNothing)
+      .then(selectProducts)
+      .then(updateDisplay);
+
+  function doNothing() {
+    console.log('Doing nothing...');
+    return null;
+  }
+}
+
+function selectProducts({finalGroup, categoryGroup}) {
+  console.log('selecting products');
+  return new Promise(function(resolve, reject) {
+    var searchTerm = document.querySelector('#searchTerm');
+    if (searchTerm.value.trim() === '') {
+      finalGroup = categoryGroup;
+    } else {
+      var lowerCaseSearchTerm = searchTerm.value.trim().toLowerCase();
+      for (let product of categoryGroup) {
+        var isLowerCaseProductName = product.name.indexOf(lowerCaseSearchTerm) != -1;
+        if (isLowerCaseProductName) {
+          finalGroup.push(product);
+        }
+      }
+    }
+    resolve(finalGroup);
+  });
+}
+
+function searchBtnClick(category, lastCategory, lastSearch) {
+  var searchBtn = document.querySelector('button');
+  return new Promise(function(resolve, reject) {
+    searchBtn.onclick = function(e) {
+      e.preventDefault();
+      console.log('searchBtn clicked!');
+      resolve(category, lastCategory, lastSearch);
+    }
+  });
+}
+
+function selectCategory(category, lastCategory, lastSearch) { 
+  return new Promise(function(resolve, reject) {
+    console.log('selecting category');
+    var sameCategoryAsLastSearch = category.value === lastCategory;
+    var searchTermSameAsLastSearch = searchTerm.value.trim() === lastSearch;
+    if (sameCategoryAsLastSearch && searchTermSameAsLastSearch) {
+      reject();   
+    } else {
+      // update record of last category and search term
+      resolve(category.value);
+    }
+  });
 }
 
 function fetchBlob(product) {
@@ -63,20 +132,21 @@ function fetchBlob(product) {
   });
 }
 
-function updateDisplay(groupsAfterFilter, mainContainer) {
+function updateDisplay(finalGroup) {
+  var mainContainer = document.querySelector('main');
   // remove previous content of <main> element
   while (mainContainer.firstChild) {
     mainContainer.removeChild(mainContainer.firstChild);
   }
 
   // no products match search term so display message
-  if (groupsAfterFilter.length === 0) {
+  if (finalGroup.length === 0) {
     var para = document.createElement('p');
     para.textContent = 'No results to display!';
     mainContainer.appendChild(para);
   // display products
   } else {
-    for (let product of groupsAfterFilter) {
+    for (let product of finalGroup) {
       var productElement = fetchBlob(product).then(createProductElement, errorHandler);
       productElement.then(function (element) {
         mainContainer.appendChild(element);
